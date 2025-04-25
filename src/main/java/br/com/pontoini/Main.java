@@ -1,8 +1,10 @@
 package br.com.pontoini;
 
 import com.itextpdf.html2pdf.HtmlConverter;
-import com.itextpdf.io.source.ByteArrayOutputStream;
+import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.kernel.pdf.PdfWriter;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,53 +15,48 @@ public class Main {
 
     public byte[] gerarPdf(String html) throws IOException {
         ByteArrayOutputStream pdfStream = new ByteArrayOutputStream();
-        HtmlConverter.convertToPdf(html, pdfStream);
+        try (PdfWriter writer = new PdfWriter(pdfStream);
+             PdfDocument pdfDocument = new PdfDocument(writer)) {
+            HtmlConverter.convertToPdf(html, pdfDocument, null);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         return pdfStream.toByteArray();
     }
 
     private static String getOutputFileName(String inputFileName) {
         int dotIndex = inputFileName.lastIndexOf('.');
-        if (dotIndex == -1) {
-            return inputFileName + ".pdf";
-        } else {
-            return inputFileName.substring(0, dotIndex) + ".pdf";
-        }
+        return (dotIndex == -1) ? inputFileName + ".pdf" : inputFileName.substring(0, dotIndex) + ".pdf";
     }
 
     public static void main(String[] args) {
         boolean isMac = System.getProperty("os.name").equals("Mac OS X");
-        String tempDir;
+        String tempDir = (args.length >= 2) ? args[1] : System.getProperty("java.io.tmpdir");
 
         if (args.length == 0) {
-            System.err.println("parametro nao informado - nome do arquivo");
+            System.err.println("Parâmetro não informado - nome do arquivo");
             System.exit(1);
         }
 
         if (isMac && args.length != 2) {
-            System.err.println("parametro nao informado - pasta temp - para mac e necessario informar pasta");
-        }
-
-        if (args.length == 2) {
-            tempDir = args[1];
-        } else {
-            tempDir = System.getProperty("java.io.tmpdir");
+            System.err.println("Para Mac, informe a pasta temporária como segundo parâmetro");
+            System.exit(1);
         }
 
         String htmlFilePath = tempDir + args[0] + ".html";
         try {
-            Main main = new Main();
             Path inputPath = Paths.get(htmlFilePath);
             if (!Files.exists(inputPath)) {
-                System.out.println("arquivo nao encontrado - o arquivo html deve ser criado no temp do computador");
+                System.err.println("Arquivo HTML não encontrado: " + htmlFilePath);
                 System.exit(1);
             }
-            byte[] htmlBytes = Files.readAllBytes(inputPath);
-            String htmlContent = new String(htmlBytes, StandardCharsets.UTF_8);
-            byte[] pdfBytes = main.gerarPdf(htmlContent);
-            String outputFileName = getOutputFileName(inputPath.getFileName().toString());
-            Path outputPath = Paths.get(tempDir, outputFileName);
+
+            String htmlContent = Files.readString(inputPath, StandardCharsets.UTF_8);
+            byte[] pdfBytes = new Main().gerarPdf(htmlContent);
+            Path outputPath = Paths.get(tempDir, getOutputFileName(inputPath.getFileName().toString()));
             Files.write(outputPath, pdfBytes);
         } catch (IOException e) {
+            System.err.println("Erro ao gerar PDF: " + e.getMessage());
             System.exit(1);
         }
     }
